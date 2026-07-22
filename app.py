@@ -184,7 +184,7 @@ def handle_message(event):
             "請輸入：完成 任務ID\n"
             "例如：完成 1"
         )
-        return
+            return
 
     task_id = int(parts[1])
     result = db.complete_task_for_user(task_id, user_id)
@@ -203,7 +203,7 @@ def handle_message(event):
     else:
         reply_text(event.reply_token, f"找不到任務 ID：{task_id}")
 
-    return
+        return
 
     if msg == "網站任務":
         show_web_tasks(event)
