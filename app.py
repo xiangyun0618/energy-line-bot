@@ -22,13 +22,20 @@ from defaults import DEFAULT_FACTORIES, DEFAULT_ROLES
 # Line bot鑰匙
 CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-print("CHANNEL_SECRET =", CHANNEL_SECRET)
-print("CHANNEL_ACCESS_TOKEN =", CHANNEL_ACCESS_TOKEN)
-# ----------------------------------------------------
+
+# -----------------------健康檢查-----------------------------
 
 app = Flask(__name__)
 handler = WebhookHandler(CHANNEL_SECRET)
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
+
+@app.route("/", methods=["GET"])
+def home():
+    return "Energy Line Bot is running!", 200
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return {"status": "ok"}, 200
 
 init_line_api(line_bot_api)
 
@@ -162,10 +169,21 @@ def handle_message(event):
         reply_text(event.reply_token, "開始註冊流程。\n請輸入你的姓名：")
         return
 
+    if msg == "我的任務":
+        show_today_tasks(event, user_id)
+        return
+
     if msg == "網站任務":
         show_web_tasks(event)
         return
-    reply_text(event.reply_token, "我不懂你說什麼。\n可使用：\n• 註冊\n• 我的任務\n• 網站任務")
+    reply_text(
+        event.reply_token,
+        "我不懂你說什麼。\n"
+        "可使用：\n"
+        "• 註冊\n"
+        "• 我的任務\n"
+        "• 網站任務"
+    )
 
 
 # ----------------- 註冊流程 --------------------
