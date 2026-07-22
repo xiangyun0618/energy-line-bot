@@ -163,15 +163,15 @@ class DBManager:
             if task["id"] != task_id:
                 continue
 
-        if task.get("assigned_user_id") != user_id:
-            return "forbidden"
+            if task.get("assigned_user_id") != user_id:
+                return "forbidden"
 
-        if task.get("status") == "已完成":
-            return "already_done"
+            if task.get("status") == "已完成":
+                return "already_done"
 
-        task["status"] = "已完成"
-        self._save_tasks()
-        return "success"
+            task["status"] = "已完成"
+            self._save_tasks()
+            return "success"
 
         return "not_found"
     
