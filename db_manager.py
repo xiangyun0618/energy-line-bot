@@ -149,7 +149,32 @@ class DBManager:
                 self._save_tasks()
                 return True
         return False
+    def complete_task_for_user(self, task_id, user_id):
+        '''
+        只允許被指派的使用者完成自己的任務。
 
+        回傳值：
+        - "success"：完成成功
+        - "not_found"：找不到任務
+        - "forbidden"：任務不是指派給此使用者
+        - "already_done"：任務已經完成
+        '''
+        for task in self.tasks:
+            if task["id"] != task_id:
+                continue
+
+        if task.get("assigned_user_id") != user_id:
+            return "forbidden"
+
+        if task.get("status") == "已完成":
+            return "already_done"
+
+        task["status"] = "已完成"
+        self._save_tasks()
+        return "success"
+
+        return "not_found"
+    
     def add_equipment(self, factory: str, name: str, eq_type: str = ""):
         """新增設備，回傳設備物件"""
         factory = factory.strip()

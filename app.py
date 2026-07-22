@@ -173,6 +173,35 @@ def handle_message(event):
         show_today_tasks(event, user_id)
         return
 
+    if msg.startswith("完成"):
+        parts = msg.split()
+
+        if len(parts) != 2 or not parts[1].isdigit():
+            reply_text(
+            event.reply_token,
+            "格式錯誤。\n"
+            "請輸入：完成 任務ID\n"
+            "例如：完成 1"
+        )
+        return
+
+    task_id = int(parts[1])
+    result = db.complete_task_for_user(task_id, user_id)
+
+    if result == "success":
+        reply_text(event.reply_token, f"✅ 任務 {task_id} 已完成。")
+    elif result == "already_done":
+        reply_text(event.reply_token, f"任務 {task_id} 已經是完成狀態。")
+    elif result == "forbidden":
+        reply_text(
+            event.reply_token,
+            "你無法完成這筆任務，因為它不是指派給你的。"
+        )
+    else:
+        reply_text(event.reply_token, f"找不到任務 ID：{task_id}")
+
+    return
+
     if msg == "網站任務":
         show_web_tasks(event)
         return
@@ -182,6 +211,7 @@ def handle_message(event):
         "可使用：\n"
         "• 註冊\n"
         "• 我的任務\n"
+        "• 完成 任務ID\n"
         "• 網站任務"
     )
 
