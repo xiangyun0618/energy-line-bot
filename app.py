@@ -174,6 +174,7 @@ def handle_message(event):
         return
 
     if msg.startswith("完成"):
+        print("[COMMAND] entered complete-task branch")
         parts = msg.split()
 
         if len(parts) != 2 or not parts[1].isdigit():
@@ -187,6 +188,8 @@ def handle_message(event):
 
     task_id = int(parts[1])
     result = db.complete_task_for_user(task_id, user_id)
+
+    print(f"[COMMAND] complete task_id={task_id}, result={result}")
 
     if result == "success":
         reply_text(event.reply_token, f"✅ 任務 {task_id} 已完成。")
