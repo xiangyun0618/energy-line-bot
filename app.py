@@ -163,6 +163,47 @@ def handle_message(event):
             reply_text(event.reply_token, f"刪除失敗，找不到設備 ID: {eq_id}")
         return
     
+        # 建立任務：格式「建立任務 廠區 設備 任務類型」
+    # 建立任務：格式「新增廠區 設備名 任務名稱」
+    # 範例:北區廠 PCS-01 巡檢
+    if msg.startswith("建立任務"):
+        if not user or user.get("role") != "管理員":
+            reply_text(event.reply_token, "只有管理員可以建立任務。")
+            return
+
+        parts = msg.split()
+
+        if len(parts) < 4:
+            reply_text(
+                event.reply_token,
+                "格式錯誤。\n"
+                "請輸入：建立任務 廠區 設備 任務類型\n"
+                "例如：建立任務 北區廠 PCS-01 巡檢"
+            )
+            return
+
+        factory = parts[1]
+        machine = parts[2]
+        task_type = " ".join(parts[3:])
+
+        task = db.create_task(
+            factory=factory,
+            machine=machine,
+            assigned_user_id=user_id,
+            task_type=task_type
+        )
+
+        reply_text(
+            event.reply_token,
+            f"✅ 任務建立成功\n"
+            f"任務 ID：{task['id']}\n"
+            f"廠區：{task['factory']}\n"
+            f"設備：{task['machine']}\n"
+            f"類型：{task['task_type']}\n"
+            f"狀態：{task['status']}"
+        )
+        return
+
     # ---- 指令 ----
     if msg == "註冊":
         cs.start_registration(user_id)
@@ -186,22 +227,22 @@ def handle_message(event):
         )
             return
 
-    task_id = int(parts[1])
-    result = db.complete_task_for_user(task_id, user_id)
+        task_id = int(parts[1])
+        result = db.complete_task_for_user(task_id, user_id)
 
-    print(f"[COMMAND] complete task_id={task_id}, result={result}")
+        print(f"[COMMAND] complete task_id={task_id}, result={result}")
 
-    if result == "success":
-        reply_text(event.reply_token, f"✅ 任務 {task_id} 已完成。")
-    elif result == "already_done":
-        reply_text(event.reply_token, f"任務 {task_id} 已經是完成狀態。")
-    elif result == "forbidden":
-        reply_text(
+        if result == "success":
+            reply_text(event.reply_token, f"✅ 任務 {task_id} 已完成。")
+        elif result == "already_done":
+            reply_text(event.reply_token, f"任務 {task_id} 已經是完成狀態。")
+        elif result == "forbidden":
+            reply_text(
             event.reply_token,
             "你無法完成這筆任務，因為它不是指派給你的。"
-        )
-    else:
-        reply_text(event.reply_token, f"找不到任務 ID：{task_id}")
+            )
+        else:
+            reply_text(event.reply_token, f"找不到任務 ID：{task_id}")
 
         return
 
@@ -213,6 +254,7 @@ def handle_message(event):
         "我不懂你說什麼。\n"
         "可使用：\n"
         "• 註冊\n"
+        "• 建立任務 廠區 設備 任務類型\n"
         "• 我的任務\n"
         "• 完成 任務ID\n"
         "• 網站任務"
