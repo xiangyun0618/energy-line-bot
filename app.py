@@ -470,7 +470,7 @@ def _finish_admin_registration(user_id, reply_token):
             reply_token,
             "註冊完成！\n"
             f"姓名：{name}\n"
-            "角色：管理員"
+            "身分：管理員"
         )
     else:
         # 使用者已存在時更新角色
@@ -484,7 +484,7 @@ def _finish_admin_registration(user_id, reply_token):
             reply_token,
             "帳號資料已更新！\n"
             f"姓名：{name}\n"
-            "角色：管理員"
+            "身分：管理員"
         )
 
     cs.clear(user_id)
@@ -517,10 +517,11 @@ def _finish_registration_without_second(
     if success:
         reply_text(
             reply_token,
-            "註冊完成！\n"
+            "註冊完成！\n\n"
             f"姓名：{name}\n"
-            f"角色：{role}\n"
-            f"第一優先廠區：{primary_factory}"
+            f"身分：{role}\n\n"
+            "負責廠區\n"
+            f"① {primary_factory}（{priority_text}）"
         )
     else:
         db.update_user(
@@ -534,8 +535,9 @@ def _finish_registration_without_second(
             reply_token,
             "帳號資料已更新！\n"
             f"姓名：{name}\n"
-            f"角色：{role}\n"
-            f"第一優先廠區：{primary_factory}"
+            f"身分：{role}\n\n"
+            "負責廠區\n"
+            f"① {primary_factory}（{priority_text}）"
         )
 
     cs.clear(user_id)
@@ -574,12 +576,13 @@ def _finish_registration_with_second(
 
     if success:
         reply_text(
-            reply_token,
-            "註冊完成！\n"
-            f"姓名：{name}\n"
-            f"角色：{role}\n"
-            f"第一優先廠區：{primary_factory}\n"
-            f"第二優先廠區：{second_factory}"
+        reply_token,
+        "✅ 註冊完成！\n\n"
+        f" 姓名：{name}\n"
+        f" 身分：{role}\n\n"
+        "負責廠區\n"
+        f"主要廠區：{primary_factory}（{map_p[primary_priority]}）\n"
+        f"第二優先廠區：{second_factory}（{map_p[second_priority]}）"
         )
     else:
         db.update_user(
@@ -592,10 +595,11 @@ def _finish_registration_with_second(
         reply_text(
             reply_token,
             "帳號資料已更新！\n"
-            f"姓名：{name}\n"
-            f"角色：{role}\n"
-            f"第一優先廠區：{primary_factory}\n"
-            f"第二優先廠區：{second_factory}"
+            f" 姓名：{name}\n"
+            f" 身分：{role}\n\n"
+            " 負責廠區\n"
+            f"主要廠區：{primary_factory}（{map_p[primary_priority]}）\n"
+            f"第二優先廠區：{second_factory}（{map_p[second_priority]}）"
         )
 
     cs.clear(user_id)
