@@ -13,10 +13,17 @@ EQUIPMENTS_FILE = os.path.join(DATA_DIR, "equipments.json")
 
 # ------------------- 共用讀寫 -------------------
 def _load(path, default):
-    if os.path.exists(path):
+    """讀取 JSON；若檔案不存在則自動建立。"""
+
+    if not os.path.exists(path):
+        _save(path, default)
+        return default
+
+    try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    else:
+
+    except (json.JSONDecodeError, OSError):
         return default
 
 
