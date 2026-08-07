@@ -417,39 +417,98 @@ def handle_registration(event, state):
         )
         return
 
-    # STEP 5：選擇第二優先廠區
+    # STEP 5：是否設定第二優先廠區
     if step == 5:
-        second_options = (
-            cs.get_temp(user_id, "second_options") or []
-        )
+        msg_norm = msg.strip().lower()
 
-        if not msg.isdigit():
+        # 有第二優先廠區
+        if msg_norm in ["是", "有", "y", "yes"]:
+            factories = db.get_factories()
+            primary_factory = cs.get_temp(user_id, "primary_factory")
+
+            # 排除已經選過的主要廠區
+            options = [f for f in factories if f != primary_factory]
+
+            # 如果沒有其他廠區可以選，就直接完成註冊
+            if not options:
+                _finish_registration_without_second(
+                    user_id,
+                    reply_token
+                )
+                return
+
+            # 暫存第二優先廠區選項
+            cs.set_temp(
+                user_id,
+                "second_options",
+                options
+            )
+
+            # 從 STEP 5 進入 STEP 6
+            cs.advance(user_id)
+
             reply_text(
                 reply_token,
-                "輸入錯誤，請輸入廠區前面的數字。"
+                "請選擇第二優先廠區（輸入數字）：\n"
+                + "\n".join(
+                    f"{i+1}. {f}"
+                    for i, f in enumerate(options)
+                )
             )
             return
 
-        second_index = int(msg) - 1
-
-        if not 0 <= second_index < len(second_options):
-            reply_text(
-                reply_token,
-                "廠區編號不存在，請重新輸入。"
+        # 沒有第二優先廠區 → 直接完成註冊
+        elif msg_norm in ["否", "沒有", "無", "n", "no"]:
+            _finish_registration_without_second(
+                user_id,
+                reply_token
             )
             return
 
-        second_factory = second_options[second_index]
+        # 其他輸入
+        else:
+            reply_text(
+                reply_token,
+                "請回覆「是」或「否」。\n"
+                "若要重新開始，可輸入「註冊」。"
+            )
+            return
 
-        cs.set_temp(
-            user_id,
-            "second_factory",
-            second_factory
-        )
 
-        _finish_registration_with_second(
-            user_id,
-            reply_token
+    # STEP 6：選擇第二優先廠區後直接完成註冊
+    if step == 6:
+        options = cs.get_temp(user_id, "second_options") or []
+
+        if msg.isdigit():
+            idx = int(msg) - 1
+
+            if 0 <= idx < len(options):
+                second_factory = options[idx]
+
+                # 儲存第二優先廠區
+                cs.set_temp(
+                    user_id,
+                    "second_factory",
+                    second_factory
+                )
+
+                # 第二個廠區固定為第二優先
+                cs.set_temp(
+                    user_id,
+                    "second_priority",
+                    2
+                )
+
+                # 完成註冊
+                _finish_registration_with_second(
+                    user_id,
+                    reply_token
+                )
+                return
+
+        reply_text(
+            reply_token,
+            "輸入錯誤，請輸入廠區前面的數字。"
         )
         return
 
@@ -665,7 +724,7 @@ def assign_daily_tasks():
         # 推播任務
         push_text(
             chosen["user_id"],
-            f"📌 今日任務\n廠區：{fac}\n機台：{machine}\n任務ID：{task['id']}\n完成後回覆：完成 {task['id']}"
+            f" 今日任務\n廠區：{fac}\n機台：{machine}\n任務ID：{task['id']}\n完成後回覆：完成 {task['id']}"
         )
 
 
