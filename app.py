@@ -426,89 +426,41 @@ def handle_registration(event, state):
             factories = db.get_factories()
             primary_factory = cs.get_temp(user_id, "primary_factory")
 
-            # 排除已經選過的主要廠區
-            options = [f for f in factories if f != primary_factory]
+        # 排除已經選過的主要廠區
+        options = [f for f in factories if f != primary_factory]
 
-            # 如果沒有其他廠區可以選，就直接完成註冊
-            if not options:
-                _finish_registration_without_second(
-                    user_id,
-                    reply_token
-                )
-                return
-
-            # 暫存第二優先廠區選項
-            cs.set_temp(
-                user_id,
-                "second_options",
-                options
-            )
-
-            # 從 STEP 5 進入 STEP 6
-            cs.advance(user_id)
-
-            reply_text(
-                reply_token,
-                "請選擇第二優先廠區（輸入數字）：\n"
-                + "\n".join(
-                    f"{i+1}. {f}"
-                    for i, f in enumerate(options)
-                )
-            )
+        if not options:
+            _finish_registration_without_second(user_id, reply_token)
             return
 
-        # 沒有第二優先廠區 → 直接完成註冊
-        elif msg_norm in ["否", "沒有", "無", "n", "no"]:
-            _finish_registration_without_second(
-                user_id,
-                reply_token
-            )
-            return
+        cs.set_temp(user_id, "second_options", options)
 
-        # 其他輸入
-        else:
-            reply_text(
-                reply_token,
-                "請回覆「是」或「否」。\n"
-                "若要重新開始，可輸入「註冊」。"
-            )
-            return
-
-
-    # STEP 6：選擇第二優先廠區後直接完成註冊
-    if step == 6:
-        options = cs.get_temp(user_id, "second_options") or []
-
-        if msg.isdigit():
-            idx = int(msg) - 1
-
-            if 0 <= idx < len(options):
-                second_factory = options[idx]
-
-                # 儲存第二優先廠區
-                cs.set_temp(
-                    user_id,
-                    "second_factory",
-                    second_factory
-                )
-
-                # 第二個廠區固定為第二優先
-                cs.set_temp(
-                    user_id,
-                    "second_priority",
-                    2
-                )
-
-                # 完成註冊
-                _finish_registration_with_second(
-                    user_id,
-                    reply_token
-                )
-                return
+        # 從 step 5 進入 step 6
+        cs.advance(user_id)
 
         reply_text(
             reply_token,
-            "輸入錯誤，請輸入廠區前面的數字。"
+            "請選擇第二優先廠區（輸入數字）：\n"
+            + "\n".join(
+                f"{i+1}. {f}"
+                for i, f in enumerate(options)
+            )
+            )
+        return
+
+        # 沒有第二優先廠區 → 直接完成註冊
+    elif msg_norm in ["否", "沒有", "無", "n", "no"]:
+            _finish_registration_without_second(
+            user_id,
+            reply_token
+            )
+            return
+
+    else:
+        reply_text(
+            reply_token,
+            "請回覆「是」或「否」。\n"
+            "若要重新開始，可輸入「註冊」。"
         )
         return
 
@@ -550,117 +502,81 @@ def _finish_admin_registration(user_id, reply_token):
 
 
 # ----------------- 維修員註冊完成：只有主要廠區 --------------------
-def _finish_registration_without_second(
-    user_id,
-    reply_token
-):
+def _finish_registration_without_second(user_id, reply_token):
     name = cs.get_temp(user_id, "name")
     role = cs.get_temp(user_id, "role")
-    primary_factory = cs.get_temp(
-        user_id,
-        "primary_factory"
-    )
+    primary_factory = cs.get_temp(user_id, "primary_factory")
 
-    # 主要廠區固定為第一優先
-    factory_priority = {
+    fp = {
         primary_factory: 1
     }
 
-    success = db.add_user(
-        user_id=user_id,
-        name=name,
-        factory_priority=factory_priority,
-        role=role
-    )
-
-    if success:
-        reply_text(
-            reply_token,
-            "註冊完成！\n\n"
-            f"姓名：{name}\n"
-            f"身分：{role}\n\n"
-            "負責廠區\n"
-            f"① {primary_factory}（{priority_text}）"
-        )
-    else:
+    # 如果已存在就更新，不存在就新增
+    if db.get_user(user_id):
         db.update_user(
             user_id,
             name=name,
             role=role,
-            factory_priority=factory_priority
+            factory_priority=fp
+        )
+    else:
+        db.add_user(
+            user_id=user_id,
+            name=name,
+            factory_priority=fp,
+            role=role
         )
 
-        reply_text(
-            reply_token,
-            "帳號資料已更新！\n"
-            f"姓名：{name}\n"
-            f"身分：{role}\n\n"
-            "負責廠區\n"
-            f"① {primary_factory}（{priority_text}）"
-        )
+    reply_text(
+        reply_token,
+        "註冊成功！\n"
+        f"姓名：{name}\n"
+        f"角色：{role}\n"
+        f"第一優先廠區：{primary_factory}\n"
+        "第二優先廠區：未設定"
+    )
 
+    # 很重要：清除註冊狀態
     cs.clear(user_id)
 
-
 # ----------------- 維修員註冊完成：包含第二優先廠區 --------------------
-def _finish_registration_with_second(
-    user_id,
-    reply_token
-):
+def _finish_registration_with_second(user_id, reply_token):
     name = cs.get_temp(user_id, "name")
     role = cs.get_temp(user_id, "role")
+    primary_factory = cs.get_temp(user_id, "primary_factory")
+    second_factory = cs.get_temp(user_id, "second_factory")
 
-    primary_factory = cs.get_temp(
-        user_id,
-        "primary_factory"
-    )
-
-    second_factory = cs.get_temp(
-        user_id,
-        "second_factory"
-    )
-
-    # 優先順序由選擇順序自動決定
-    factory_priority = {
+    fp = {
         primary_factory: 1,
         second_factory: 2
     }
 
-    success = db.add_user(
-        user_id=user_id,
-        name=name,
-        factory_priority=factory_priority,
-        role=role
-    )
-
-    if success:
-        reply_text(
-        reply_token,
-        "✅ 註冊完成！\n\n"
-        f" 姓名：{name}\n"
-        f" 身分：{role}\n\n"
-        "負責廠區\n"
-        f"主要廠區：{primary_factory}（{map_p[primary_priority]}）\n"
-        f"第二優先廠區：{second_factory}（{map_p[second_priority]}）"
-        )
-    else:
+    # 如果已存在就更新，不存在就新增
+    if db.get_user(user_id):
         db.update_user(
             user_id,
             name=name,
             role=role,
-            factory_priority=factory_priority
+            factory_priority=fp
+        )
+    else:
+        db.add_user(
+            user_id=user_id,
+            name=name,
+            factory_priority=fp,
+            role=role
         )
 
-        reply_text(
-            reply_token,
-            "帳號資料已更新！\n"
-            f" 姓名：{name}\n"
-            f" 身分：{role}\n\n"
-            " 負責廠區\n"
-            f"主要廠區：{primary_factory}（{map_p[primary_priority]}）\n"
-            f"第二優先廠區：{second_factory}（{map_p[second_priority]}）"
-        )
+    reply_text(
+        reply_token,
+        "✅ 註冊成功！\n"
+        f"姓名：{name}\n"
+        f"角色：{role}\n"
+        f"第一優先廠區：{primary_factory}\n"
+        f"第二優先廠區：{second_factory}"
+    )
 
+    # 很重要：清除註冊狀態
     cs.clear(user_id)
     
 # ----------------- 查詢任務 --------------------
