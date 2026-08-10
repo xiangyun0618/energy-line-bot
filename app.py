@@ -46,6 +46,12 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/energy_monitor")
 mongo_client = MongoClient(MONGO_URI)
 web_db = mongo_client["energy_monitor"]
 
+try:
+    mongo_client.admin.command("ping")
+    print("✅ MongoDB Atlas 連線成功")
+except Exception as e:
+    print("❌ MongoDB 連線失敗：", e)
+
 # ----------------- Webhook --------------------
 @app.route("/callback", methods=['POST'])
 def callback():
