@@ -48,10 +48,10 @@ class DBManager:
         self.mongo_db = self.mongo_client["energy_monitor"]
 
         self.users_collection = self.mongo_db["users"]
+        self.factories_collection = self.mongo_db["factories"]
 
         # 其他資料目前仍維持 JSON
         self.tasks = _load(TASKS_FILE, [])
-        self.factories = _load(FACTORIES_FILE, [])
         self.equipments = _load(EQUIPMENTS_FILE, [])
 
     # ===================== 使用者 =====================
@@ -104,32 +104,39 @@ class DBManager:
     # ===================== 廠區 =====================
     def seed_factories(self, names):
         """若無廠區資料，則初始化"""
-        if not self.factories:
-            self.factories = names
-            self._save_factories()
+        for name in factories:
+            self.factories_collection.update_one(
+                {"name": name},
+                {"$setOnInsert": {"name": name}},
+                upsert=True
+            )
 
     def get_factories(self):
-        return list(self.factories)
+        docs = self.factories_collection.find(
+            {},
+            {"_id": 0, "name": 1}
+        )
+
+        return [doc["name"] for doc in docs]
 
     def add_factory(self, name: str):
         """新增廠區名稱，如果已存在就回 False"""
-        name = name.strip()
-        if not name:
+        if self.factories_collection.find_one({"name": name}):
             return False
-        if name in self.factories:
-            return False
-        self.factories.append(name)
-        self._save_factories()
+
+        self.factories_collection.insert_one({
+            "name": name
+        })
+
         return True
 
     def delete_factory(self, name: str):
         """刪除廠區，若不存在回 False"""
-        name = name.strip()
-        if name not in self.factories:
-            return False
-        self.factories.remove(name)
-        self._save_factories()
-        return True
+        result = self.factories_collection.delete_one({
+            "name": name
+        })
+
+        return result.deleted_count > 0
 
 
     # ===================== 任務 =====================
