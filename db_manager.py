@@ -102,7 +102,7 @@ class DBManager:
         return result.matched_count > 0
 
     # ===================== 廠區 =====================
-    def seed_factories(self, names):
+    def seed_factories(self, factories):
         """若無廠區資料，則初始化"""
         for name in factories:
             self.factories_collection.update_one(
