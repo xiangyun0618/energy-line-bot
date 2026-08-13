@@ -1,5 +1,8 @@
 import os
 import json
+from pymongo import MongoClient
+from dotenv import load_dotenv
+load_dotenv()
 from datetime import date
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -35,11 +38,21 @@ def _save(path, obj):
 # ------------------- 主類別 -------------------
 class DBManager:
     def __init__(self):
-        self.users = _load(USERS_FILE, [])      # list of dicts
-        self.tasks = _load(TASKS_FILE, [])      # list of dicts
-        self.factories = _load(FACTORIES_FILE, [])  # list of strings
-        self.equipments = _load(EQUIPMENTS_FILE, [])   # list of dicts
+        # MongoDB
+        mongo_uri = os.getenv(
+            "MONGO_URI",
+            "mongodb://localhost:27017/energy_monitor"
+        )
 
+        self.mongo_client = MongoClient(mongo_uri)
+        self.mongo_db = self.mongo_client["energy_monitor"]
+
+        self.users_collection = self.mongo_db["users"]
+
+        # 其他資料目前仍維持 JSON
+        self.tasks = _load(TASKS_FILE, [])
+        self.factories = _load(FACTORIES_FILE, [])
+        self.equipments = _load(EQUIPMENTS_FILE, [])
 
     # ===================== 使用者 =====================
     def add_user(self, user_id, name=None, factory_priority=None, role=None):
@@ -52,49 +65,41 @@ class DBManager:
         
         user = {
             "user_id": user_id,
-            "name": name or "",
-            "factory_priority": factory_priority or {},  # dict
-            "role": role or ""
+            "name": name,
+            "factory_priority": factory_priority,
+            "role": role
         }
-        self.users.append(user)
-        self._save_users()
+
+        self.users_collection.insert_one(user)
+
         return True
 
     def get_user(self, user_id):
-        for u in self.users:
-            if u["user_id"] == user_id:
-                return u
-        return None
+        user = self.users_collection.find_one(
+            {"user_id": user_id},
+            {"_id": 0}
+        )
+
+        return user
 
     def get_all_users(self):
-        return list(self.users)
+        return list(
+            self.users_collection.find(
+                {},
+                {"_id": 0}
+            )
+        )
 
     def _save_equipments(self):
         _save(EQUIPMENTS_FILE, self.equipments)
 
     def update_user(self, user_id, **kwargs):
-        """
-        kwargs 可傳:
-        name="翔允"
-        role="維修員"
-        factory_priority={"北區廠":1, "南區廠":2}
-        （會自動 merge）
-        """
-        user = self.get_user(user_id)
-        if not user:
-            return False
-        
-        for key, value in kwargs.items():
-            if key == "factory_priority":
-                # 重要：支援合併 + 更新優先級
-                if isinstance(value, dict):
-                    for fac, pri in value.items():
-                        user["factory_priority"][fac] = pri
-            elif key in user:
-                user[key] = value
-        
-        self._save_users()
-        return True
+        result = self.users_collection.update_one(
+            {"user_id": user_id},
+            {"$set": kwargs}
+        )
+
+        return result.matched_count > 0
 
     # ===================== 廠區 =====================
     def seed_factories(self, names):
