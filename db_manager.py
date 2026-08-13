@@ -50,9 +50,9 @@ class DBManager:
         self.users_collection = self.mongo_db["users"]
         self.factories_collection = self.mongo_db["factories"]
 
-        # 其他資料目前仍維持 JSON
-        self.tasks = _load(TASKS_FILE, [])
-        self.equipments = _load(EQUIPMENTS_FILE, [])
+        self.equipments_collection = self.mongo_db["equipments"]
+        self.tasks_collection = self.mongo_db["tasks"]
+
 
     # ===================== 使用者 =====================
     def add_user(self, user_id, name=None, factory_priority=None, role=None):
@@ -142,32 +142,53 @@ class DBManager:
     # ===================== 任務 =====================
     def create_task(self, factory, machine, assigned_user_id, task_type="巡檢", date_str=None):
         """建立任務"""
-        if date_str is None:
-            date_str = date.today().isoformat()
+        from datetime import date as date_class
+
+        if date is None:
+            date = date_class.today().isoformat()
+
+        last = self.tasks_collection.find_one(
+            sort=[("id", -1)]
+        )
+
+        new_id = 1 if not last else last["id"] + 1
 
         task = {
-            "id": len(self.tasks) + 1,
+            "id": new_id,
             "factory": factory,
             "machine": machine,
             "assigned_user_id": assigned_user_id,
             "task_type": task_type,
-            "date": date_str,
+            "date": date,
             "status": "待執行"
         }
-        self.tasks.append(task)
-        self._save_tasks()
+
+        self.tasks_collection.insert_one(task)
+
         return task
 
-    def get_tasks_by_date(self, date_str):
-        return [t for t in self.tasks if t["date"] == date_str]
+    def get_tasks_by_date(self, target_date):
+        return list(
+            self.tasks_collection.find(
+            {"date": target_date},
+            {"_id": 0}
+            )
+        )
 
-    def update_task_status(self, task_id, status):
-        for t in self.tasks:
-            if t["id"] == task_id:
-                t["status"] = status
-                self._save_tasks()
-                return True
-        return False
+    def get_tasks_by_user(self, user_id, target_date=None):
+        query = {
+        "assigned_user_id": user_id
+        }
+
+        if target_date:
+            query["date"] = target_date
+
+        return list(
+            self.tasks_collection.find(
+                query,
+                {"_id": 0}
+            )
+        )
     def complete_task_for_user(self, task_id, user_id):
         '''
         只允許被指派的使用者完成自己的任務。
@@ -178,54 +199,68 @@ class DBManager:
         - "forbidden"：任務不是指派給此使用者
         - "already_done"：任務已經完成
         '''
-        for task in self.tasks:
-            if task["id"] != task_id:
-                continue
+        task = self.tasks_collection.find_one(
+            {"id": task_id}
+        )
 
-            if task.get("assigned_user_id") != user_id:
-                return "forbidden"
+        if not task:
+            return "not_found"
 
-            if task.get("status") == "已完成":
-                return "already_done"
+        if task.get("assigned_user_id") != user_id:
+            return "forbidden"
 
-            task["status"] = "已完成"
-            self._save_tasks()
-            return "success"
+        if task.get("status") == "已完成":
+            return "already_done"
 
-        return "not_found"
+        self.tasks_collection.update_one(
+            {"id": task_id},
+            {
+                "$set": {
+                    "status": "已完成"
+                }
+            }
+        )
+
+        return "success"
     
-    def add_equipment(self, factory: str, name: str, eq_type: str = ""):
+    def add_equipment(self, factory, name):
         """新增設備，回傳設備物件"""
-        factory = factory.strip()
-        name = name.strip()
-        if not factory or not name:
-            return None
+        last = self.equipments_collection.find_one(
+            sort=[("id", -1)]
+        )
 
-        # 建 ID（簡單用長度+1）
-        eq_id = len(self.equipments) + 1
-        eq = {
-            "id": eq_id,
+        new_id = 1 if not last else last["id"] + 1
+
+        equipment = {
+            "id": new_id,
             "factory": factory,
-            "name": name,
-            "type": eq_type
+            "name": name
         }
-        self.equipments.append(eq)
-        self._save_equipments()
-        return eq
 
-    def delete_equipment(self, eq_id: int):
+        self.equipments_collection.insert_one(equipment)
+
+        return equipment
+
+    def delete_equipment(self, equipment_id):
         """用 id 刪除設備"""
-        for i, e in enumerate(self.equipments):
-            if e["id"] == eq_id:
-                self.equipments.pop(i)
-                self._save_equipments()
-                return True
-        return False
+        result = self.equipments_collection.delete_one(
+            {"id": equipment_id}
+        )
 
-    def list_equipments(self, factory: str | None = None):
-        if not factory:
-            return list(self.equipments)
-        return [e for e in self.equipments if e["factory"] == factory]
+        return result.deleted_count > 0
+
+    def list_equipments(self, factory=None):
+        query = {}
+
+        if factory:
+            query["factory"] = factory
+
+        return list(
+            self.equipments_collection.find(
+            query,
+            {"_id": 0}
+            )
+        )
 
 
     # ===================== 儲存 =====================
