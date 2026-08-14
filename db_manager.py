@@ -144,8 +144,8 @@ class DBManager:
         """建立任務"""
         from datetime import date as date_class
 
-        if date is None:
-            date = date_class.today().isoformat()
+        if task_date is None:
+            task_date = date_class.today().isoformat()
 
         last = self.tasks_collection.find_one(
             sort=[("id", -1)]
@@ -159,7 +159,7 @@ class DBManager:
             "machine": machine,
             "assigned_user_id": assigned_user_id,
             "task_type": task_type,
-            "date": date,
+            "date": task_date,
             "status": "待執行"
         }
 
