@@ -82,8 +82,13 @@ def handle_message(event):
     user_id = event.source.user_id
     msg = event.message.text.strip()
 
-    # 是否在註冊流程中
     st = cs.get_state(user_id)
+
+    print(f"[DEBUG] 收到訊息: {msg}")
+    print(f"[DEBUG] registration state: {st}")
+
+    # 是否在註冊流程中
+    '''st = cs.get_state(user_id)'''
     if st:
         handle_registration(event, st)
         return
