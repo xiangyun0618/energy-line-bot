@@ -141,17 +141,18 @@ class DBManager:
 
     # ===================== 任務 =====================
     def create_task(self, factory, machine, assigned_user_id, task_type="巡檢", date_str=None):
-        """建立任務"""
-        from datetime import date as date_class
+        """建立任務並寫入 MongoDB"""
 
-        if task_date is None:
-            task_date = date_class.today().isoformat()
+        if date_str is None:
+            date_str = date.today().isoformat()
 
-        last = self.tasks_collection.find_one(
-            sort=[("id", -1)]
-        )
+    # 找目前最大的任務 ID
+        last_task = self.tasks_collection.find_one(sort=[("id", -1)])
 
-        new_id = 1 if not last else last["id"] + 1
+        if last_task:
+            new_id = last_task.get("id", 0) + 1
+        else:
+            new_id = 1
 
         task = {
             "id": new_id,
@@ -159,14 +160,17 @@ class DBManager:
             "machine": machine,
             "assigned_user_id": assigned_user_id,
             "task_type": task_type,
-            "date": task_date,
+            "date": date_str,
             "status": "待執行"
         }
 
         self.tasks_collection.insert_one(task)
 
+    # insert_one 會在 task 裡加入 _id
+    # app.py 不需要這個欄位，所以移除
+        task.pop("_id", None)
         return task
-
+    
     def get_tasks_by_date(self, target_date):
         return list(
             self.tasks_collection.find(
