@@ -18,6 +18,9 @@ load_dotenv()
 from db_manager import DBManager
 import conversation as cs
 from defaults import DEFAULT_FACTORIES, DEFAULT_ROLES
+# ----------------- 單一帳號測試模式 -----------------
+SINGLE_ACCOUNT_TEST_MODE = True
+
 TASK_TYPES = [
     "例行巡檢",
     "故障檢查",
@@ -618,11 +621,33 @@ def handle_create_task(event, state):
             "assigned_user_name"
         )
 
+        # ------------------------------------------
+        # 單帳號碩論測試模式
+        # ------------------------------------------
+        # 如果選到 TEST_ 開頭的虛擬維修員，
+        # 實際把任務指派給目前這個真實 LINE 帳號。
+        effective_assigned_user_id = assigned_user_id
+
+        is_test_technician = (
+            isinstance(assigned_user_id, str)
+            and assigned_user_id.startswith("TEST_")
+        )
+
+        if SINGLE_ACCOUNT_TEST_MODE and is_test_technician:
+            effective_assigned_user_id = user_id
+
+            print(
+                "[TEST MODE] 虛擬維修員",
+                assigned_user_id,
+                "→ 實際由目前 LINE 帳號模擬",
+                user_id
+            )
+
         # 真正建立任務
         task = db.create_task(
             factory=factory,
             machine=machine,
-            assigned_user_id=assigned_user_id,
+            assigned_user_id=effective_assigned_user_id,
             task_type=task_type
         )
 
@@ -634,7 +659,7 @@ def handle_create_task(event, state):
 
         try:
             push_text(
-                assigned_user_id,
+                effective_assigned_user_id,
                 "收到新的巡檢任務\n"
                 f"任務 ID：{task['id']}\n"
                 f"廠區：{factory}\n"
@@ -650,7 +675,13 @@ def handle_create_task(event, state):
                 e
             )
 
-        notify_text = (
+        if SINGLE_ACCOUNT_TEST_MODE and is_test_technician:
+            notify_text = (
+                "單帳號測試模式："
+                "目前帳號同時模擬維修員，已收到任務通知"
+            )
+        else:
+            notify_text = (
             "已通知維修員"
             if push_success
             else "任務已建立，但推播失敗"
