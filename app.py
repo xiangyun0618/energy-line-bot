@@ -18,6 +18,11 @@ load_dotenv()
 from db_manager import DBManager
 import conversation as cs
 from defaults import DEFAULT_FACTORIES, DEFAULT_ROLES
+TASK_TYPES = [
+    "例行巡檢",
+    "故障檢查",
+    "維修"
+]
 
 # Line bot鑰匙
 CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
@@ -42,6 +47,8 @@ init_line_api(line_bot_api)
 # 資料庫
 db = DBManager()
 db.seed_factories(DEFAULT_FACTORIES)
+# 讓 conversation.py 使用同一個 MongoDB
+cs.init_state_store(db)
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/energy_monitor")
 mongo_client = MongoClient(MONGO_URI)
 web_db = mongo_client["energy_monitor"]
@@ -87,10 +94,40 @@ def handle_message(event):
     print(f"[DEBUG] 收到訊息: {msg}")
     print(f"[DEBUG] registration state: {st}")
 
-    # 是否在註冊流程中
-    '''st = cs.get_state(user_id)'''
     if st:
-        handle_registration(event, st)
+        # 所有流程都支援取消
+        if msg == "取消":
+            cs.clear(user_id)
+
+            reply_text(
+                event.reply_token,
+                "已取消目前操作。"
+            )
+            return
+
+        flow = st.get("flow")
+
+        if flow == "registration":
+            handle_registration(
+                event,
+                st
+            )
+            return
+
+        if flow == "create_task":
+            handle_create_task(
+                event,
+                st
+            )
+            return
+
+        # 不認識的 state，避免卡死
+        cs.clear(user_id)
+
+        reply_text(
+        event.reply_token,
+        "流程狀態異常，已自動重設，請重新操作。"
+        )
         return
     
     # 只有管理員可以維護廠區與設備
@@ -174,43 +211,47 @@ def handle_message(event):
             reply_text(event.reply_token, f"刪除失敗，找不到設備 ID: {eq_id}")
         return
     
-    # 建立任務：格式「建立任務 廠區 設備 任務類型」
-    # 範例:北區廠 PCS-01 巡檢
-    if msg.startswith("建立任務"):
+# ----------------- 互動式建立任務 --------------------
+    if msg == "建立任務":
+
+        # 只有管理員可以建立任務
         if not user or user.get("role") != "管理員":
-            reply_text(event.reply_token, "只有管理員可以建立任務。")
-            return
-
-        parts = msg.split()
-
-        if len(parts) < 4:
             reply_text(
                 event.reply_token,
-                "格式錯誤。\n"
-                "請輸入：建立任務 廠區 設備 任務類型\n"
-                "例如：建立任務 北區廠 PCS-01 巡檢"
+                "只有管理員可以建立任務。"
             )
             return
 
-        factory = parts[1]
-        machine = parts[2]
-        task_type = " ".join(parts[3:])
+        # 從 MongoDB 取得目前所有廠區
+        factories = db.get_factories()
 
-        task = db.create_task(
-            factory=factory,
-            machine=machine,
-            assigned_user_id=user_id,
-            task_type=task_type
+        if not factories:
+            reply_text(
+                event.reply_token,
+                "目前沒有可用廠區。"
+            )
+            return
+
+        # 啟動「建立任務」互動流程
+        cs.start_create_task(user_id)
+
+        # 暫存這次可以選擇的廠區
+        cs.set_temp(
+            user_id,
+            "factory_options",
+            factories
         )
 
+        # 顯示第一步
         reply_text(
             event.reply_token,
-            f"✅ 任務建立成功\n"
-            f"任務 ID：{task['id']}\n"
-            f"廠區：{task['factory']}\n"
-            f"設備：{task['machine']}\n"
-            f"類型：{task['task_type']}\n"
-            f"狀態：{task['status']}"
+            "【建立任務 1/5】\n"
+            "請選擇廠區：\n"
+            +"\n".join(
+                f"{i + 1}. {factory}"
+                for i, factory in enumerate(factories)
+            )
+            + "\n\n輸入「取消」可中止。"
         )
         return
 
@@ -269,6 +310,363 @@ def handle_message(event):
         "• 完成 任務ID\n"
         "• 網站任務"
     )
+
+# ----------------- 建立任務流程 --------------------
+def handle_create_task(event, state):
+    user_id = event.source.user_id
+    reply_token = event.reply_token
+
+    step = state["step"]
+    msg = event.message.text.strip()
+
+
+    # ==========================================
+    # STEP 1：選廠區
+    # ==========================================
+    if step == 1:
+        factories = cs.get_temp(
+            user_id,
+            "factory_options",
+            []
+        )
+
+        if not msg.isdigit():
+            reply_text(
+                reply_token,
+                "請輸入廠區前面的數字。"
+            )
+            return
+
+        index = int(msg) - 1
+
+        if not 0 <= index < len(factories):
+            reply_text(
+                reply_token,
+                "廠區編號不存在。"
+            )
+            return
+
+        factory = factories[index]
+
+        cs.set_temp(
+            user_id,
+            "factory",
+            factory
+        )
+
+        # 查這個廠區的設備
+        equipments = db.list_equipments(factory)
+
+        if not equipments:
+            cs.clear(user_id)
+
+            reply_text(
+                reply_token,
+                f"「{factory}」目前沒有設備，"
+                "請先新增設備後再建立任務。"
+            )
+            return
+
+        cs.set_temp(
+            user_id,
+            "equipment_options",
+            equipments
+        )
+
+        cs.advance(user_id)
+
+        reply_text(
+            reply_token,
+            "【建立任務 2/5】\n"
+            f"廠區：{factory}\n"
+            "請選擇設備：\n"
+            + "\n".join(
+                f"{i + 1}. {eq['name']}"
+                for i, eq in enumerate(equipments)
+            )
+        )
+        return
+
+
+    # ==========================================
+    # STEP 2：選設備
+    # ==========================================
+    if step == 2:
+        equipments = cs.get_temp(
+            user_id,
+            "equipment_options",
+            []
+        )
+
+        if not msg.isdigit():
+            reply_text(
+                reply_token,
+                "請輸入設備前面的數字。"
+            )
+            return
+
+        index = int(msg) - 1
+
+        if not 0 <= index < len(equipments):
+            reply_text(
+                reply_token,
+                "設備編號不存在。"
+            )
+            return
+
+        equipment = equipments[index]
+
+        cs.set_temp(
+            user_id,
+            "machine",
+            equipment["name"]
+        )
+
+        cs.advance(user_id)
+
+        reply_text(
+            reply_token,
+            "【建立任務 3/5】\n"
+            "請選擇任務類型：\n"
+            + "\n".join(
+                f"{i + 1}. {task_type}"
+                for i, task_type in enumerate(TASK_TYPES)
+            )
+        )
+        return
+
+
+    # ==========================================
+    # STEP 3：選任務類型
+    # ==========================================
+    if step == 3:
+
+        if not msg.isdigit():
+            reply_text(
+                reply_token,
+                "請輸入任務類型前面的數字。"
+            )
+            return
+
+        index = int(msg) - 1
+
+        if not 0 <= index < len(TASK_TYPES):
+            reply_text(
+                reply_token,
+                "任務類型編號不存在。"
+            )
+            return
+
+        task_type = TASK_TYPES[index]
+
+        cs.set_temp(
+            user_id,
+            "task_type",
+            task_type
+        )
+
+        factory = cs.get_temp(
+            user_id,
+            "factory"
+        )
+
+        # 找負責此廠區的維修員
+        technicians = []
+
+        for technician in db.get_all_users():
+
+            if technician.get("role") != "維修員":
+                continue
+
+            factory_priority = technician.get(
+                "factory_priority",
+                {}
+            )
+
+            if factory not in factory_priority:
+                continue
+
+            technicians.append({
+                "user_id": technician["user_id"],
+                "name": technician.get(
+                    "name",
+                    "未命名維修員"
+                ),
+                "priority": factory_priority[factory]
+            })
+
+        # 第一優先排前面
+        technicians.sort(
+            key=lambda x: x["priority"]
+        )
+
+        if not technicians:
+            cs.clear(user_id)
+
+            reply_text(
+                reply_token,
+                f"目前沒有負責「{factory}」的維修員。\n"
+                "請先完成維修員註冊。"
+            )
+            return
+
+        cs.set_temp(
+            user_id,
+            "technician_options",
+            technicians
+        )
+
+        cs.advance(user_id)
+
+        reply_text(
+            reply_token,
+            "【建立任務 4/5】\n"
+            "請選擇維修員：\n"
+            + "\n".join(
+                f"{i + 1}. {tech['name']} "
+                f"（第 {tech['priority']} 優先）"
+                for i, tech in enumerate(technicians)
+            )
+        )
+        return
+
+
+    # ==========================================
+    # STEP 4：選維修員
+    # ==========================================
+    if step == 4:
+        technicians = cs.get_temp(
+            user_id,
+            "technician_options",
+            []
+        )
+
+        if not msg.isdigit():
+            reply_text(
+                reply_token,
+                "請輸入維修員前面的數字。"
+            )
+            return
+
+        index = int(msg) - 1
+
+        if not 0 <= index < len(technicians):
+            reply_text(
+                reply_token,
+                "維修員編號不存在。"
+            )
+            return
+
+        technician = technicians[index]
+
+        cs.set_temp(
+            user_id,
+            "assigned_user_id",
+            technician["user_id"]
+        )
+
+        cs.set_temp(
+            user_id,
+            "assigned_user_name",
+            technician["name"]
+        )
+
+        cs.advance(user_id)
+
+        factory = cs.get_temp(user_id, "factory")
+        machine = cs.get_temp(user_id, "machine")
+        task_type = cs.get_temp(user_id, "task_type")
+
+        reply_text(
+            reply_token,
+            "【建立任務 5/5】\n"
+            "請確認任務內容：\n\n"
+            f"廠區：{factory}\n"
+            f"設備：{machine}\n"
+            f"類型：{task_type}\n"
+            f"維修員：{technician['name']}\n\n"
+            "輸入「確認」建立任務\n"
+            "輸入「取消」中止"
+        )
+        return
+
+
+    # ==========================================
+    # STEP 5：確認建立
+    # ==========================================
+    if step == 5:
+
+        if msg != "確認":
+            reply_text(
+                reply_token,
+                "請輸入「確認」建立任務，"
+                "或輸入「取消」。"
+            )
+            return
+
+        factory = cs.get_temp(user_id, "factory")
+        machine = cs.get_temp(user_id, "machine")
+        task_type = cs.get_temp(user_id, "task_type")
+
+        assigned_user_id = cs.get_temp(
+            user_id,
+            "assigned_user_id"
+        )
+
+        assigned_user_name = cs.get_temp(
+            user_id,
+            "assigned_user_name"
+        )
+
+        # 真正建立任務
+        task = db.create_task(
+            factory=factory,
+            machine=machine,
+            assigned_user_id=assigned_user_id,
+            task_type=task_type
+        )
+
+        # 流程完成，刪除 conversation state
+        cs.clear(user_id)
+
+        # 通知維修員
+        push_success = True
+
+        try:
+            push_text(
+                assigned_user_id,
+                "收到新的巡檢任務\n"
+                f"任務 ID：{task['id']}\n"
+                f"廠區：{factory}\n"
+                f"設備：{machine}\n"
+                f"類型：{task_type}\n\n"
+                f"完成後請輸入：完成 {task['id']}"
+            )
+
+        except Exception as e:
+            push_success = False
+            print(
+                "[TASK PUSH ERROR]",
+                e
+            )
+
+        notify_text = (
+            "已通知維修員"
+            if push_success
+            else "任務已建立，但推播失敗"
+        )
+
+        reply_text(
+            reply_token,
+            "任務建立成功\n"
+            f"任務 ID：{task['id']}\n"
+            f"廠區：{factory}\n"
+            f"設備：{machine}\n"
+            f"類型：{task_type}\n"
+            f"維修員：{assigned_user_name}\n"
+            f"{notify_text}"
+        )
+        return
 
 
 # ----------------- 註冊流程 --------------------
@@ -607,23 +1005,48 @@ def _finish_registration_with_second(user_id, reply_token):
 # ----------------- 查詢任務 --------------------
 def show_today_tasks(event, user_id):
     today = date.today().isoformat()
-    tasks = [t for t in db.get_tasks_by_date(today) if t["assigned_user_id"] == user_id]
+
+    tasks = db.get_tasks_by_user(
+        user_id,
+        today
+    )
 
     if not tasks:
-        reply_text(event.reply_token, "今天沒有任務。")
+        reply_text(
+            event.reply_token,
+            "今天沒有指派給你的任務。"
+        )
         return
 
+    # 未完成排前面
+    tasks.sort(
+        key=lambda t: (
+            t.get("status") == "已完成",
+            t.get("id", 0)
+        )
+    )
+
     lines = []
-    for t in tasks:
-        lines.append(
-            f"任務ID {t['id']}\n"
-            f"廠區：{t['factory']}\n"
-            f"機台：{t['machine']}\n"
-            f"狀態：{t['status']}\n"
+
+    for task in tasks:
+
+        status_icon = (
+            "已完成" if task.get("status") == "已完成"
+            else "未完成"
         )
 
-    reply_text(event.reply_token, "\n".join(lines))
+        lines.append(
+            f"{status_icon} 任務 {task['id']}\n"
+            f"廠區：{task['factory']}\n"
+            f"設備：{task['machine']}\n"
+            f"類型：{task['task_type']}\n"
+            f"狀態：{task['status']}"
+        )
 
+    reply_text(
+        event.reply_token,
+        "\n\n".join(lines)
+    )
 
 # ----------------- 任務派送（依優先級） --------------------
 def assign_daily_tasks():

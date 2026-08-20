@@ -3,7 +3,7 @@ import json
 from pymongo import MongoClient
 from dotenv import load_dotenv
 load_dotenv()
-from datetime import date
+from datetime import date, datetime, timezone
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -138,7 +138,6 @@ class DBManager:
 
         return result.deleted_count > 0
 
-
     # ===================== 任務 =====================
     def create_task(self, factory, machine, assigned_user_id, task_type="巡檢", date_str=None):
         """建立任務並寫入 MongoDB"""
@@ -161,7 +160,13 @@ class DBManager:
             "assigned_user_id": assigned_user_id,
             "task_type": task_type,
             "date": date_str,
-            "status": "待執行"
+            "status": "待執行",
+        
+            # 任務建立時間
+            "created_at": datetime.now(timezone.utc).isoformat(),
+
+            # 尚未完成
+            "completed_at": None
         }
 
         self.tasks_collection.insert_one(task)
@@ -193,6 +198,7 @@ class DBManager:
                 {"_id": 0}
             )
         )
+    
     def complete_task_for_user(self, task_id, user_id):
         '''
         只允許被指派的使用者完成自己的任務。
@@ -220,7 +226,10 @@ class DBManager:
             {"id": task_id},
             {
                 "$set": {
-                    "status": "已完成"
+                    "status": "已完成",
+                    "completed_at": datetime.now(
+                    timezone.utc
+                    ).isoformat()
                 }
             }
         )
