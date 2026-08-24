@@ -161,11 +161,7 @@ class DBManager:
             "task_type": task_type,
             "date": date_str,
             "status": "待執行",
-        
-            # 任務建立時間
             "created_at": datetime.now(timezone.utc).isoformat(),
-
-            # 尚未完成
             "completed_at": None
         }
 
@@ -227,9 +223,7 @@ class DBManager:
             {
                 "$set": {
                     "status": "已完成",
-                    "completed_at": datetime.now(
-                    timezone.utc
-                    ).isoformat()
+                    "completed_at": datetime.now(timezone.utc).isoformat()
                 }
             }
         )
