@@ -1164,7 +1164,7 @@ def show_all_tasks(event):
 
     for task in tasks:
             lines.append(
-            f"任務 {task['id']}\n"
+            f"\n任務 {task['id']}\n"
             f"廠區：{task['factory']}\n"
             f"設備：{task['machine']}\n"
             f"類型：{task['task_type']}\n"
