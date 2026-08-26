@@ -1082,8 +1082,9 @@ def show_today_tasks(event, user_id):
     for task in tasks:
 
         status_icon = (
-            "已完成" if task.get("status") == "已完成"
-            else "未完成"
+            "✅"
+            if task.get("status") == "已完成"
+            else "❌"
         )
 
         lines.append(
@@ -1122,12 +1123,19 @@ def show_pending_tasks(event):
         return
 
     lines = [
-        f"未完成任務共 {len(tasks)} 筆"
+    f"❌ 未完成任務共 {len(tasks)} 筆"
     ]
 
     for task in tasks:
+
+        status_icon = (
+            "✅"
+            if task.get("status") == "已完成"
+            else "❌"
+        )
+
         lines.append(
-            f"\n任務 {task['id']}\n"
+            f"\n{status_icon} 任務 {task['id']}\n"
             f"廠區：{task['factory']}\n"
             f"設備：{task['machine']}\n"
             f"類型：{task['task_type']}\n"
@@ -1159,12 +1167,19 @@ def show_all_tasks(event):
         return
 
     lines = [
-        f"全部任務共 {len(tasks)} 筆"
+        f"📋 全部任務共 {len(tasks)} 筆"
     ]
 
     for task in tasks:
-            lines.append(
-            f"\n任務 {task['id']}\n"
+
+        status_icon = (
+            "✅"
+            if task.get("status") == "已完成"
+            else "❌"
+        )
+
+        lines.append(
+            f"\n{status_icon} 任務 {task['id']}\n"
             f"廠區：{task['factory']}\n"
             f"設備：{task['machine']}\n"
             f"類型：{task['task_type']}\n"
