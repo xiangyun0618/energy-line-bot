@@ -721,7 +721,6 @@ def handle_create_task(event, state):
         )
         return
 
-
 # ----------------- 註冊流程 --------------------
 def handle_registration(event, state):
     user_id = event.source.user_id
@@ -959,7 +958,6 @@ def _finish_admin_registration(user_id, reply_token):
 
     cs.clear(user_id)
 
-
 # ----------------- 維修員註冊完成：只有主要廠區 --------------------
 def _finish_registration_without_second(user_id, reply_token):
     name = cs.get_temp(user_id, "name")
@@ -1165,14 +1163,8 @@ def show_all_tasks(event):
     ]
 
     for task in tasks:
-        status_icon = (
-            "✅"
-            if task.get("status") == "已完成"
-            else "🟡"
-        )
-
-        lines.append(
-            f"\n{status_icon} 任務 {task['id']}\n"
+            lines.append(
+            f"任務 {task['id']}\n"
             f"廠區：{task['factory']}\n"
             f"設備：{task['machine']}\n"
             f"類型：{task['task_type']}\n"
