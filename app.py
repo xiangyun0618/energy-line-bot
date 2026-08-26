@@ -268,6 +268,26 @@ def handle_message(event):
         show_today_tasks(event, user_id)
         return
 
+    if msg == "未完成任務":
+        if not user or user.get("role") != "管理員":
+            reply_text(
+                event.reply_token,
+                "只有管理員可以查詢未完成任務。"
+            )
+            return
+        show_pending_tasks(event)
+        return
+
+    if msg == "全部任務":
+        if not user or user.get("role") != "管理員":
+            reply_text(
+                event.reply_token,
+                "只有管理員可以查詢全部任務。"
+            )
+            return
+        show_all_tasks(event)
+        return
+
     if msg.startswith("完成"):
         print("[COMMAND] entered complete-task branch")
         parts = msg.split()
@@ -307,11 +327,13 @@ def handle_message(event):
         event.reply_token,
         "我不懂你說什麼。\n"
         "可使用：\n"
-        "• 註冊\n"
-        "• 建立任務 廠區 設備 任務類型\n"
-        "• 我的任務\n"
-        "• 完成 任務ID\n"
-        "• 網站任務"
+        "註冊\n"
+        "建立任務\n"
+        "我的任務\n"
+        "未完成任務\n"
+        "全部任務\n"
+        "完成 任務ID\n"
+        "網站任務"
     )
 
 # ----------------- 建立任務流程 --------------------
@@ -1077,6 +1099,90 @@ def show_today_tasks(event, user_id):
     reply_text(
         event.reply_token,
         "\n\n".join(lines)
+    )
+
+# ----------------- 管理員：查詢未完成任務 --------------------
+def show_pending_tasks(event):
+    tasks = list(
+        db.tasks_collection.find(
+            {
+                "status": {
+                    "$ne": "已完成"
+                }
+            },
+            {
+                "_id": 0
+            }
+        ).sort("id", 1)
+    )
+
+    if not tasks:
+        reply_text(
+            event.reply_token,
+            "目前沒有未完成任務。"
+        )
+        return
+
+    lines = [
+        f"未完成任務共 {len(tasks)} 筆"
+    ]
+
+    for task in tasks:
+        lines.append(
+            f"\n任務 {task['id']}\n"
+            f"廠區：{task['factory']}\n"
+            f"設備：{task['machine']}\n"
+            f"類型：{task['task_type']}\n"
+            f"狀態：{task['status']}\n"
+            f"日期：{task['date']}"
+        )
+
+    reply_text(
+        event.reply_token,
+        "\n".join(lines)
+    )
+
+# ----------------- 管理員：查詢全部任務 --------------------
+def show_all_tasks(event):
+    tasks = list(
+        db.tasks_collection.find(
+            {},
+            {
+                "_id": 0
+            }
+        ).sort("id", -1)
+    )
+
+    if not tasks:
+        reply_text(
+            event.reply_token,
+            "目前沒有任何任務紀錄。"
+        )
+        return
+
+    lines = [
+        f"全部任務共 {len(tasks)} 筆"
+    ]
+
+    for task in tasks:
+        status_icon = (
+            "✅"
+            if task.get("status") == "已完成"
+            else "🟡"
+        )
+
+        lines.append(
+            f"\n{status_icon} 任務 {task['id']}\n"
+            f"廠區：{task['factory']}\n"
+            f"設備：{task['machine']}\n"
+            f"類型：{task['task_type']}\n"
+            f"狀態：{task['status']}\n"
+            f"日期：{task['date']}"
+        )
+
+    reply_text(
+        event.reply_token,
+        "\n".join(lines)
     )
 
 # ----------------- 任務派送（依優先級） --------------------
