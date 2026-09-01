@@ -6,7 +6,8 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage, FollowEve
 import schedule
 import threading
 import time
-from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pymongo import MongoClient
 from line_utils import init_line_api, reply_text, push_text
 from web_tasks import show_web_tasks
@@ -20,7 +21,7 @@ import conversation as cs
 from defaults import DEFAULT_FACTORIES, DEFAULT_ROLES
 # ----------------- 單一帳號測試模式 -----------------
 SINGLE_ACCOUNT_TEST_MODE = True
-
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 TASK_TYPES = [
     "例行巡檢",
     "故障檢查",
@@ -1055,7 +1056,7 @@ def _finish_registration_with_second(user_id, reply_token):
 
 # ----------------- 查詢任務 --------------------
 def show_today_tasks(event, user_id):
-    today = date.today().isoformat()
+    today = datetime.now(TAIPEI_TZ).date().isoformat()
 
     tasks = db.get_tasks_by_user(
         user_id,
